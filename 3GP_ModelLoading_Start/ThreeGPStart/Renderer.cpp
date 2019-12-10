@@ -5,25 +5,16 @@ struct MyMesh
 {
 	GLuint VAO;
 	unsigned int numElements;
+	GLuint textureId;
 
 };
-GLuint tex;
-bool CreateTerrain(int numCellsX, int numCellsZ, float sizeX, float sizeZ, const std::string&
-	textureFilename);
+
 std::vector<MyMesh>MyMeshVector;
-std::vector<glm::vec3> terrainpositions;
-std::vector<glm::vec3> terrainnormals;
-std::vector<glm::vec3> terrainuv;
-std::vector<GLuint> terrainelements;
-GLuint verticesVBO;
-GLuint elementsEBO;
-GLuint normalsNBO;
-GLuint texturesTBO;
 // On exit must clean up any OpenGL resources e.g. the program, the buffers
 Renderer::~Renderer()
 {
 	glDeleteProgram(m_program);	
-	glDeleteBuffers(1, &m_VAO);
+	glDeleteBuffers(1, &VAO);
 }
 
 // Load, compile and link the shaders and create a program object to host them
@@ -60,6 +51,152 @@ bool Renderer::CreateProgram()
 }
 
 
+bool Renderer::CreateTerrain()
+{
+	Helpers::ModelLoader loader;
+	if (!loader.LoadFromFile("Data\\Models\\grass11.bmp"))
+	{
+		std::cerr << "Not in file, cannot open" << std::endl;
+	}
+
+	float size{ 1000 };
+
+	bool toggle{ true };
+	int numCellsXZ{ 2 };
+
+	float cellSize = size / numCellsXZ;
+
+	int numVertsX = numCellsXZ + 1;
+
+
+	int numVertsZ = numCellsXZ + 1;
+
+	glm::vec3 start(-size / 2, 0, size / 2);
+	std::vector<glm::vec3>vertices;
+	std::vector<glm::vec2>uvCoords;
+	float tiles{ 10.0f };
+	for (int z = 0; z < numVertsZ; z++)
+	{
+		for (int x = 0; x < numVertsX; x++)
+		{
+			glm::vec3 pos{ start };
+			pos.x += x * cellSize;
+			pos.z += z * cellSize;
+			pos.y = rand() % 200;
+			vertices.push_back(pos);
+			float u = (float)x / (numVertsX - 1);
+			float v = (float)z / (numVertsZ - 1);
+			u *= tiles;
+			v *= tiles;
+			uvCoords.push_back(glm::vec2(u, v));
+		}
+	}
+
+	std::vector<GLuint>elements;
+	for (int cellZ = 0; cellZ < numCellsXZ; cellZ++)
+	{
+		for (int cellX = 0; cellX < numCellsXZ; cellX++)
+		{
+			int startVertIndex = cellZ * numVertsX * cellX;
+			//first triangle
+			if (toggle)
+			{
+				elements.push_back(startVertIndex);
+				elements.push_back(startVertIndex + 1);
+				elements.push_back(startVertIndex + numVertsX + 1);
+
+				//second triangle
+				elements.push_back(startVertIndex);
+				elements.push_back(startVertIndex + numVertsX + 1);
+				elements.push_back(startVertIndex + numVertsX);
+			}
+			else
+			{
+				//first triangle
+				elements.push_back(startVertIndex);
+				elements.push_back(startVertIndex + 1);
+				elements.push_back(startVertIndex + numVertsX);
+				//second triangle
+				elements.push_back(startVertIndex + 1);
+				elements.push_back(startVertIndex + numVertsX + 1);
+				elements.push_back(startVertIndex + numVertsX);
+			}
+			toggle = !toggle;
+		}
+		toggle = !toggle;
+	}
+	Model newModel;
+	newModel.name = name;
+
+	GLuint positionsVBO;
+	glGenBuffers(1, &positionsVBO);
+	glBindBuffer(GL_ARRAY_BUFFER, positionsVBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * vertices.size(), vertices.data(), GL_STATIC_DRAW);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	GLuint coordsVBO;
+	glGenBuffers(1, &coordsVBO);
+	glBindBuffer(GL_ARRAY_BUFFER, coordsVBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * uvCoords.size(), uvCoords.data(), GL_STATIC_DRAW);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	GLuint elementsEBO;
+	glGenBuffers(1, &elementsEBO);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementsEBO);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint) * elements.size(), elements.data(), GL_STATIC_DRAW);
+	GLuint VAO;
+	glGenVertexArrays(1, &VAO);
+	glBindVertexArray(VAO);
+
+	glBindBuffer(GL_ARRAY_BUFFER, positionsVBO);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(
+		0,                  // attribute 0
+		3,                  // size in bytes of each item in the stream
+		GL_FLOAT,           // type of the item
+		GL_FALSE,           // normalized or not (advanced)
+		0,                  // stride (advanced)
+		(void*)0            // array buffer offset (advanced)
+	);
+	glBindBuffer(GL_ARRAY_BUFFER, coordsVBO);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(
+		1,                  // attribute 0
+		2,                  // size in bytes of each item in the stream
+		GL_FLOAT,           // type of the item
+		GL_FALSE,           // normalized or not (advanced)
+		0,                  // stride (advanced)
+		(void*)0            // array buffer offset (advanced)
+	);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementsEBO);
+	glBindVertexArray(0);
+	Helpers::CheckForGLError();
+
+	MyMesh newMesh;
+	newMesh.VAO = VAO;
+	newMesh.numElements = (GLuint)elements.size();
+	Helpers::ImageLoader image;
+	if (image.Load("Data\\Textures\\grass11.bmp"))
+	{
+		GLuint tex;
+		glGenTextures(1, &tex);
+		glBindTexture(GL_TEXTURE_2D, tex);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image.Width(), image.Height(), 0, GL_RGBA, GL_UNSIGNED_BYTE, image.GetData());
+		glGenerateMipmap(GL_TEXTURE_2D);
+		newMesh.textureId = tex;
+	}
+	else
+	{
+		std::cout << "Texture load eror" << std::endl;
+	}
+
+	newModel.mesh.push_back(newMesh);
+	Helpers::CheckForGLError;
+	models.push_back(newModel);
+	return true;
+}
 
 // Load / create geometry into OpenGL buffers	
 bool Renderer::InitialiseGeometry()
@@ -67,55 +204,12 @@ bool Renderer::InitialiseGeometry()
 	// Load and compile shaders into m_program
 	if (!CreateProgram())
 		return false;
+	if (!CreateTerrain())
+		return false;
 //	if (!heightmap.LoadFromFile("Data\\Sky\\Mars\\Mar_R"))
 //{
 //	std::cerr << "not in file", "can't open" << std::endl;
 //}
-
-
-
-
-CreateTerrain(2, 2, 10.0f, 10.0f, "Data\\Models\\grass11.bmp");
-glGenVertexArrays(1, &m_VAO);
-glBindVertexArray(m_VAO);
-glBindBuffer(GL_ARRAY_BUFFER, verticesVBO);
-glEnableVertexAttribArray(0);
-glVertexAttribPointer(
-	0,                  // attribute 0
-	3,                  // size in bytes of each item in the stream
-	GL_FLOAT,           // type of the item
-	GL_FALSE,           // normalized or not (advanced)
-	0,                  // stride (advanced)
-	(void*)0            // array buffer offset (advanced)
-);
-
-glBindBuffer(GL_ARRAY_BUFFER, normalsNBO);
-glEnableVertexAttribArray(1);
-glVertexAttribPointer(
-	1,                  // attribute 1
-	3,                  // size in bytes of each item in the stream
-	GL_FLOAT,           // type of the item
-	GL_FALSE,           // normalized or not (advanced)
-	0,                  // stride (advanced)
-	(void*)0            // array buffer offset (advanced)
-);
-
-glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementsEBO);
-glBindBuffer(GL_ARRAY_BUFFER, texturesTBO);
-glEnableVertexAttribArray(2);
-glVertexAttribPointer(
-	2,                  // attribute 0
-	2,                  // size in bytes of each item in the stream 2vectors not 3 so it works!!
-	GL_FLOAT,           // type of the item
-	GL_FALSE,           // normalized or not (advanced)
-	0,                  // stride (advanced)
-	(void*)0            // array buffer offset (advanced)
-);
-//add to vector
-
-
-//return true;
-
 
 	//Helpers::ImageLoader texture;
 	//if (!texture.Load("Data\\Models\\Jeep\\jeep_army.jpg"))
@@ -134,8 +228,7 @@ glVertexAttribPointer(
 	//glGenerateMipmap(GL_TEXTURE_2D);
 	//Helpers::ModelLoader textureloader;
 	//
-	
-	
+
 
 
 	// Good idea to check for an error now:	
@@ -173,107 +266,33 @@ void Renderer::Render(const Helpers::Camera& camera, float deltaTime)
 
 	glUseProgram(m_program);
 	
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, tex);
-	glUniform1i(glGetUniformLocation(m_program, "sampler_tex"),0);
+	
 	// TODO: Send the combined matrix to the shader in a uniform
 	GLuint combined_xform_id = glGetUniformLocation(m_program, "combined_xform");
 	glUniformMatrix4fv(combined_xform_id, 1, GL_FALSE, glm::value_ptr(combined_xform));
-	GLuint model_xform_id= glGetUniformLocation(m_program, "model_xform");
-	glUniformMatrix4fv(model_xform_id, 1, GL_FALSE, glm::value_ptr(model_xform));
-	// TODO: render each mesh. Send the correct model matrix to the shader in a uniform
-
-	glBindVertexArray(MyMeshVector[0].VAO);
-	glDrawElements(GL_TRIANGLES,MyMeshVector[0].numElements, GL_UNSIGNED_INT, (void*)0);
-
-	// Always a good idea, when debugging at least, to check for GL errors
-	Helpers::CheckForGLError();
-}
-
-bool CreateTerrain(int numCellsX, int numCellsZ, float sizex, float sizez, const std::string& textureFilename)
-{
-	Helpers::ModelLoader loader;
-	if (!loader.LoadFromFile("Data\\Models\\grass11.bmp"))
-	{
-		std::cerr << "Not in file, cannot open" << std::endl;
-	}
-	bool toggleDiamondpattern = true;
-	int numCells = 4;
-	 numCellsX = 2;
-	 numCellsZ = 2;
-	int numVertsX{ numCellsX + 1 };
-	int numVertsZ{ numCellsZ + 1 };
-	int numVerts{ numVertsX * numVertsZ };
-    sizex = 10.0f;
-	sizez = 10.0f;
 	
-
-	for (int cellz = 0; cellz < numVertsZ; cellz++)
-	{
-		for (int cellx = 0; cellx < numVertsX; cellx++)
+	// TODO: render each mesh. Send the correct model matrix to the shader in a uniform
+	for (const auto& currentmesh : mesh)
+	{ 
+		glm::mat4 model_xform = glm::mat4(1);
+		GLuint model_xform_id = glGetUniformLocation(m_program, "model_xform");
+		glUniformMatrix4fv(model_xform_id, 1, GL_FALSE, glm::value_ptr(model_xform));
+		if (mesh.textureId)
 		{
-			terrainpositions.push_back({ cellx * sizex, 0, -cellz * sizez });
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, mesh.textureId);
+			glUniform1i(glGetUniformLocation(m_program, "sampler_tex"), 0);
 		}
-
-	}
-
-	for (int cellz = 0; cellz < numVertsZ; cellz++)
-	{
-		for (int cellx = 0; cellx < numVertsX; cellx++)
+		else
 		{
-			int startVertIndex = cellz * numVertsX + cellx;
-
-			if (toggleDiamondpattern)
-			{
-				//first triangle
-				terrainelements.push_back(startVertIndex);
-				terrainelements.push_back(startVertIndex + 1);
-				terrainelements.push_back(startVertIndex + numVertsX);
-				//second triangle
-				terrainelements.push_back(startVertIndex + 1);
-				terrainelements.push_back(startVertIndex + numVertsX + 1);
-				terrainelements.push_back(startVertIndex + numVertsX);
-			}
-			else
-			{
-				//first triangle
-				terrainelements.push_back(startVertIndex + numVertsX + 1);
-				terrainelements.push_back(startVertIndex + numVertsX);
-				terrainelements.push_back(startVertIndex);
-				//second triangle
-				terrainelements.push_back(startVertIndex);
-				terrainelements.push_back(startVertIndex + 1);
-				terrainelements.push_back(startVertIndex + numVertsX + 1);
-
-
-			}
-
+			glBindTexture(GL_TEXTURE_2D, 0);
 		}
+		glBindVertexArray();
+		glDrawElements(GL_TRIANGLES, mesh.numElements, GL_UNSIGNED_INT, (void*)0);
 
-	}
-	for (const Helpers::Mesh& mesh : loader.GetMeshVector())
-	{
-		mesh.uvCoords;
-		//data you can extract from the mesh
-		//mesh.vertices; //glm::vec3 vertices
-		//mesh.elements; //gives unsigned int elements
-		//mesh.normals; //glm::vec3
-		//create Vbo's
-		
-		glGenBuffers(1, &verticesVBO);
-		glBindBuffer(GL_ARRAY_BUFFER, verticesVBO);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * mesh.vertices.size(), mesh.vertices.data(), GL_STATIC_DRAW);
-		glGenBuffers(1, &elementsEBO);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementsEBO);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint) * terrainelements.size(), terrainelements.data(), GL_STATIC_DRAW);
-		
-		glGenBuffers(1, &normalsNBO);
-		glBindBuffer(GL_ARRAY_BUFFER, normalsNBO);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * mesh.normals.size(), mesh.normals.data(), GL_STATIC_DRAW);
-		glGenBuffers(1, &texturesTBO);
-		glBindBuffer(GL_ARRAY_BUFFER, texturesTBO);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * mesh.uvCoords.size(), mesh.uvCoords.data(), GL_STATIC_DRAW);
-		//create vao's
-		
+		// Always a good idea, when debugging at least, to check for GL errors
+		Helpers::CheckForGLError();
 	}
 }
+
+
