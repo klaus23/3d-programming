@@ -20,13 +20,18 @@ struct ModelMesh
 struct Model
 {
 	std::string name;
-	std::vector<ModelMesh>mesh;
+	std::vector<ModelMesh> mesh;
 };
+
 class Renderer
 {
 private:
 	// Program object - to host shaders
 	GLuint m_program{ 0 };
+
+	GLuint VAO{ 0 };
+
+	std::vector<Model> modelVector;
 	
 	bool CreateProgram();
 public:

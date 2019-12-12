@@ -25,7 +25,7 @@
 int main()
 {
 	// Use the helper function to set up GLFW, GLEW and OpenGL
-	GLFWwindow* window{ Helpers::CreateGLFWWindow(1024, 768, "Simple example") };
+	GLFWwindow* window{ Helpers::CreateGLFWWindow(1024, 768, "3GP") };
 	if (!window)
 		return -1;
 
